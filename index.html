@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overfitting et Régularisation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Icônes Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #ffffff;
+            background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        
+        .slide {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateY(30px) scale(0.98);
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+        
+        .slide.active {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0) scale(1);
+            z-index: 10;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+            100% { transform: translateY(0px); }
+        }
+        .floating { animation: float 6s ease-in-out infinite; }
+        
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        .pulse-soft { animation: pulse-soft 3s ease-in-out infinite; }
+    </style>
+</head>
+<body class="text-gray-800 overflow-hidden w-screen h-screen relative">
+    
+    <!-- Barre de progression -->
+    <div class="absolute top-0 left-0 h-1.5 bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-500 ease-out z-50 shadow-sm" id="progress-bar" style="width: 0%"></div>
+
+    <!-- Slide 1 : Titre -->
+    <div class="slide active" id="slide-1">
+        <div class="text-center max-w-4xl glass-panel p-16 rounded-3xl floating border border-gray-100">
+            <div class="inline-flex items-center px-4 py-1.5 rounded-full bg-blue-50 text-blue-600 font-semibold text-sm mb-6 uppercase tracking-wider">
+                <i data-lucide="cpu" class="w-4 h-4 mr-2"></i> Machine Learning
+            </div>
+            <h1 class="text-6xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 mb-6 leading-tight">
+                Overfitting et<br>Régularisation
+            </h1>
+            <h2 class="text-2xl text-gray-500 mb-10 font-light">
+                Comprendre le surapprentissage et construire des modèles qui généralisent bien.
+            </h2>
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-indigo-500 p-5 text-left rounded-r-lg inline-block">
+                <p class="text-indigo-900 font-medium flex items-center">
+                    <i data-lucide="lightbulb" class="w-8 h-8 mr-3 text-indigo-500"></i>
+                    Un modèle performant doit être capable de faire de bonnes prédictions sur des données qu'il n'a jamais vues.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 2 : Qu'est-ce que l'Overfitting ? -->
+    <div class="slide" id="slide-2">
+        <div class="max-w-6xl w-full">
+            <h2 class="text-5xl font-bold text-gray-800 mb-12 text-center tracking-tight">Qu'est-ce que l'Overfitting ?</h2>
+            
+            <div class="grid grid-cols-2 gap-8">
+                <div class="glass-panel p-8 rounded-3xl hover:shadow-xl transition-shadow duration-300">
+                    <div class="w-12 h-12 bg-red-100 text-red-600 rounded-xl flex items-center justify-center mb-6">
+                        <i data-lucide="target" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-4">Définition</h3>
+                    <p class="text-lg mb-6 text-gray-600">Un modèle apprend <strong class="text-red-500 font-bold bg-red-50 px-2 py-1 rounded">trop bien</strong> les données d'entraînement.</p>
+                    
+                    <div class="space-y-3 mb-8">
+                        <div class="flex items-center text-gray-700">
+                            <span class="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
+                            Il apprend les vraies relations
+                        </div>
+                        <div class="flex items-center text-gray-700">
+                            <span class="w-2 h-2 bg-red-500 rounded-full mr-3"></span>
+                            Mais aussi le <strong>bruit (noise)</strong>
+                        </div>
+                    </div>
+
+                    <div class="p-5 bg-red-50 rounded-xl border border-red-100">
+                        <p class="font-bold text-red-800 mb-3 uppercase text-sm tracking-wider">Résultat</p>
+                        <p class="text-red-700 flex justify-between items-center mb-2">
+                            <span>Excellentes performances (Train)</span> 
+                            <i data-lucide="check" class="w-5 h-5 text-green-600"></i>
+                        </p>
+                        <p class="text-red-700 flex justify-between items-center font-bold">
+                            <span>Mauvaises performances (Test)</span> 
+                            <i data-lucide="x" class="w-5 h-5 text-red-600"></i>
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="glass-panel p-8 rounded-3xl flex flex-col justify-center hover:shadow-xl transition-shadow duration-300">
+                    <div class="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-6">
+                        <i data-lucide="graduation-cap" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-4">L'analogie de l'étudiant</h3>
+                    <p class="text-lg mb-8 text-gray-600">Un étudiant apprend les réponses par cœur sans comprendre le cours profondément. Nouvel examen → mauvaises notes.</p>
+                    
+                    <div class="flex justify-between items-center text-center bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                        <div class="w-1/2 border-r border-gray-200">
+                            <div class="text-5xl font-black text-green-500 mb-2">99%</div>
+                            <div class="text-sm font-medium text-gray-500 uppercase">Train<br>(Examen blanc)</div>
+                        </div>
+                        <div class="w-1/2">
+                            <div class="text-5xl font-black text-red-500 mb-2">72%</div>
+                            <div class="text-sm font-medium text-gray-500 uppercase">Test<br>(Vrai Examen)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 3 : Underfitting vs Overfitting (Interactif) -->
+    <div class="slide" id="slide-3">
+        <div class="max-w-6xl w-full">
+            <h2 class="text-4xl font-bold text-gray-800 mb-8 text-center">Underfitting vs Overfitting</h2>
+            
+            <div class="grid grid-cols-3 gap-8">
+                <div class="col-span-1 glass-panel p-8 rounded-3xl flex flex-col justify-center bg-white shadow-lg border border-gray-100">
+                    <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
+                        <i data-lucide="sliders-horizontal" class="mr-3 text-blue-500 w-5 h-5"></i>
+                        Contrôle Interactif
+                    </h3>
+                    
+                    <label for="complexity-slider" class="font-bold text-gray-600 mb-4 text-sm uppercase tracking-wide">
+                        Complexité du modèle
+                    </label>
+                    <input type="range" id="complexity-slider" min="1" max="3" value="2" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 mb-2">
+                    <div class="flex justify-between text-xs font-bold text-gray-400 mb-8">
+                        <span>Simple</span>
+                        <span>Complexe</span>
+                    </div>
+                    
+                    <div id="complexity-status" class="p-4 bg-green-50 text-green-700 font-bold rounded-xl text-center border border-green-200 mb-6 transition-colors shadow-inner flex items-center justify-center">
+                        <i data-lucide="check-circle-2" class="w-5 h-5 mr-2"></i> Bon Modèle
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
+                            <span class="font-bold text-gray-500 text-sm flex items-center">
+                                <i data-lucide="line-chart" class="w-4 h-4 mr-2"></i> Train
+                            </span>
+                            <span id="complex-train" class="text-green-500 font-black text-xl">Bon</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
+                            <span class="font-bold text-gray-500 text-sm flex items-center">
+                                <i data-lucide="activity" class="w-4 h-4 mr-2"></i> Test
+                            </span>
+                            <span id="complex-test" class="text-green-500 font-black text-xl">Bon</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-span-2 glass-panel p-6 rounded-3xl bg-white shadow-xl h-96 relative flex flex-col border border-gray-100">
+                    <h3 class="font-bold text-gray-400 uppercase tracking-wider text-xs mb-2 text-center">Visualisation de l'ajustement</h3>
+                    <div class="flex-1 relative w-full">
+                        <canvas id="chart-complexity"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 4 : Comment détecter l'Overfitting ? (Interactif) -->
+    <div class="slide" id="slide-4">
+        <div class="max-w-5xl w-full">
+            <h2 class="text-4xl font-bold text-gray-800 mb-10 text-center">Comment détecter l'Overfitting ?</h2>
+            
+            <div class="grid grid-cols-2 gap-8">
+                <div class="glass-panel p-8 rounded-3xl relative overflow-hidden flex flex-col bg-white border border-gray-100 shadow-lg">
+                    <h3 class="text-xl font-bold mb-6 text-gray-800 flex items-center">
+                        <i data-lucide="play-circle" class="mr-3 text-blue-500"></i> 
+                        Simulation d'entraînement
+                    </h3>
+                    
+                    <div class="flex-1 space-y-4">
+                        <div class="flex justify-between items-center text-sm font-bold text-gray-500 uppercase">
+                            <span>Époques</span>
+                            <span id="epoch-counter">0 / 50</span>
+                        </div>
+                        <div class="w-full bg-gray-100 h-3 rounded-full overflow-hidden shadow-inner">
+                            <div id="epoch-progress" class="bg-gradient-to-r from-blue-400 to-blue-600 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                        
+                        <div class="mt-8 space-y-4">
+                            <div class="flex border-b border-gray-100 pb-2">
+                                <div class="flex-1 font-semibold text-gray-400 uppercase text-xs tracking-wide">Dataset</div>
+                                <div class="flex-1 font-semibold text-gray-400 uppercase text-xs tracking-wide text-right">Score</div>
+                            </div>
+                            <div class="flex items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                <div class="flex-1 font-bold text-gray-700 flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-green-500 mr-3"></span> Train
+                                </div>
+                                <div class="flex-1 text-right text-3xl text-green-500 font-black transition-all" id="detect-train">-</div>
+                            </div>
+                            <div class="flex items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                <div class="flex-1 font-bold text-gray-700 flex items-center">
+                                    <span class="w-3 h-3 rounded-full bg-blue-500 mr-3"></span> Test
+                                </div>
+                                <div class="flex-1 text-right text-3xl text-blue-500 font-black transition-all" id="detect-test">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="btn-simulate" onclick="runSimulation()" class="mt-8 w-full bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-gray-800 hover:shadow-lg transition-all flex justify-center items-center">
+                        <i data-lucide="play" class="mr-2 w-5 h-5"></i> Lancer l'entraînement
+                    </button>
+                </div>
+                
+                <div class="glass-panel p-8 rounded-3xl bg-white flex flex-col border border-gray-100 shadow-lg">
+                    <div id="detect-alert" class="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-8 text-center flex-1 flex flex-col justify-center transition-all duration-500 shadow-inner">
+                        <div id="alert-icon-container">
+                            <i data-lucide="info" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
+                        </div>
+                        <p id="alert-text" class="text-gray-500 font-bold text-lg">Démarrez l'entraînement pour observer l'évolution des performances.</p>
+                    </div>
+                    
+                    <h4 class="font-bold text-gray-400 uppercase tracking-wider text-xs mb-4">Autres signes révélateurs</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="flex items-center p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <i data-lucide="puzzle" class="text-indigo-500 mr-3 w-5 h-5"></i>
+                            <span class="font-bold text-gray-600 text-sm">Modèle trop complexe</span>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <i data-lucide="hash" class="text-indigo-500 mr-3 w-5 h-5"></i>
+                            <span class="font-bold text-gray-600 text-sm">Beaucoup de paramètres</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 5 : Le compromis Biais / Variance (Interactif) -->
+    <div class="slide" id="slide-5">
+        <div class="max-w-6xl w-full">
+            <h2 class="text-4xl font-bold text-gray-800 mb-8 text-center">Le compromis Biais / Variance</h2>
+            
+            <div class="flex flex-col md:flex-row gap-10 items-center">
+                <div class="w-full md:w-5/12 flex flex-col space-y-4">
+                    <div id="box-bias" class="glass-panel p-5 rounded-2xl border-l-8 border-orange-400 transition-all duration-300 opacity-50 bg-white">
+                        <div class="flex items-center mb-2">
+                            <div class="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center mr-4">
+                                <i data-lucide="minimize-2" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Biais élevé</h3>
+                        </div>
+                        <p class="text-gray-600 ml-14 text-sm font-medium">Le modèle simplifie trop (Underfitting).</p>
+                    </div>
+                    
+                    <div id="box-optimal" class="p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold text-center shadow-lg transition-all duration-300 opacity-50 flex items-center justify-center">
+                        <i data-lucide="scale" class="mr-3 w-5 h-5"></i> Point d'Équilibre
+                    </div>
+
+                    <div id="box-variance" class="glass-panel p-5 rounded-2xl border-l-8 border-red-500 transition-all duration-300 opacity-50 bg-white">
+                        <div class="flex items-center mb-2">
+                            <div class="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center mr-4">
+                                <i data-lucide="maximize-2" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Variance élevée</h3>
+                        </div>
+                        <p class="text-gray-600 ml-14 text-sm font-medium">Le modèle est trop sensible au bruit (Overfitting).</p>
+                    </div>
+                    
+                    <div class="mt-4 bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <label class="font-bold text-gray-600 uppercase text-xs tracking-wider mb-2 block text-center">Ajuster la complexité :</label>
+                        <input type="range" id="bv-slider" min="0" max="4" value="2" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        <div class="flex justify-between text-[10px] uppercase font-bold text-gray-400 mt-2">
+                            <span>Faible</span>
+                            <span>Moyenne</span>
+                            <span>Forte</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="w-full md:w-7/12 glass-panel p-6 rounded-3xl relative h-[450px] flex flex-col bg-white border border-gray-100 shadow-xl">
+                    <h3 class="text-center font-bold text-gray-400 mb-2 uppercase tracking-wider text-xs">Évolution de l'erreur globale</h3>
+                    <div class="flex-1 relative w-full h-full">
+                        <canvas id="chart-bias-variance"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 6 : Comment réduire l'Overfitting ? -->
+    <div class="slide" id="slide-6">
+        <div class="max-w-6xl w-full">
+            <h2 class="text-4xl font-bold text-gray-800 mb-12 text-center">Comment réduire l'Overfitting ?</h2>
+            
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-6 mb-12">
+                <div class="glass-panel p-8 rounded-3xl text-center hover:-translate-y-2 hover:shadow-xl transition-all cursor-pointer group bg-white border border-gray-100">
+                    <div class="w-16 h-16 mx-auto bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                        <i data-lucide="scale" class="w-8 h-8"></i>
+                    </div>
+                    <div class="font-bold text-gray-800 text-lg mb-1">Régularisation</div>
+                    <div class="text-sm text-gray-500">L1 (Lasso) / L2 (Ridge)</div>
+                </div>
+                
+                <div class="glass-panel p-8 rounded-3xl text-center hover:-translate-y-2 hover:shadow-xl transition-all cursor-pointer group bg-white border border-gray-100">
+                    <div class="w-16 h-16 mx-auto bg-purple-50 text-purple-500 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                        <i data-lucide="scissors" class="w-8 h-8"></i>
+                    </div>
+                    <div class="font-bold text-gray-800 text-lg mb-1">Moins de complexité</div>
+                    <div class="text-sm text-gray-500">Réduire le nombre de paramètres</div>
+                </div>
+                
+                <div class="glass-panel p-8 rounded-3xl text-center hover:-translate-y-2 hover:shadow-xl transition-all cursor-pointer group bg-white border border-gray-100">
+                    <div class="w-16 h-16 mx-auto bg-green-50 text-green-500 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-green-500 group-hover:text-white transition-colors">
+                        <i data-lucide="database" class="w-8 h-8"></i>
+                    </div>
+                    <div class="font-bold text-gray-800 text-lg mb-1">Plus de données</div>
+                    <div class="text-sm text-gray-500">Collecte ou Data Augmentation</div>
+                </div>
+                
+                <div class="glass-panel p-8 rounded-3xl text-center hover:-translate-y-2 hover:shadow-xl transition-all cursor-pointer group bg-white border border-gray-100">
+                    <div class="w-16 h-16 mx-auto bg-yellow-50 text-yellow-600 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-yellow-500 group-hover:text-white transition-colors">
+                        <i data-lucide="filter" class="w-8 h-8"></i>
+                    </div>
+                    <div class="font-bold text-gray-800 text-lg mb-1">Feature Selection</div>
+                    <div class="text-sm text-gray-500">Garder uniquement l'essentiel</div>
+                </div>
+                
+                <div class="glass-panel p-8 rounded-3xl text-center hover:-translate-y-2 hover:shadow-xl transition-all cursor-pointer group bg-white border border-gray-100">
+                    <div class="w-16 h-16 mx-auto bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                        <i data-lucide="refresh-cw" class="w-8 h-8"></i>
+                    </div>
+                    <div class="font-bold text-gray-800 text-lg mb-1">Cross Validation</div>
+                    <div class="text-sm text-gray-500">Pour une meilleure évaluation</div>
+                </div>
+                
+                <div class="glass-panel p-8 rounded-3xl text-center hover:-translate-y-2 hover:shadow-xl transition-all cursor-pointer group bg-white border border-gray-100">
+                    <div class="w-16 h-16 mx-auto bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-red-500 group-hover:text-white transition-colors">
+                        <i data-lucide="octagon-alert" class="w-8 h-8"></i>
+                    </div>
+                    <div class="font-bold text-gray-800 text-lg mb-1">Early Stopping</div>
+                    <div class="text-sm text-gray-500">Arrêter l'entraînement au bon moment</div>
+                </div>
+            </div>
+            
+            <div class="text-center mt-4">
+                <span class="inline-flex items-center px-8 py-4 bg-gray-900 text-white font-bold rounded-full shadow-2xl floating">
+                    <i data-lucide="lightbulb" class="text-yellow-400 w-5 h-5 mr-3"></i> À retenir : Un modèle plus simple généralise souvent mieux.
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 7 : La Régularisation (Interactif) -->
+    <div class="slide" id="slide-7">
+        <div class="max-w-6xl w-full">
+            <h2 class="text-4xl font-bold text-gray-800 mb-4 text-center">La Régularisation</h2>
+            <p class="text-center text-xl text-gray-500 mb-10">Ajouter une pénalité lorsque les poids deviennent trop grands.</p>
+            
+            <div class="grid grid-cols-2 gap-8 mb-10">
+                <div class="glass-panel p-8 rounded-3xl border-t-8 border-blue-500 bg-white hover:shadow-lg transition-shadow">
+                    <h3 class="text-2xl font-black text-gray-800 mb-4 flex items-center">
+                        <span class="bg-blue-100 text-blue-600 px-3 py-1 rounded-lg text-sm mr-4 uppercase tracking-widest font-bold">Lasso</span> 
+                        L1
+                    </h3>
+                    <ul class="space-y-3 text-gray-600 font-medium">
+                        <li class="flex items-start"><i data-lucide="check" class="text-blue-500 w-5 h-5 mr-2"></i> Supprime certaines variables (poids = 0)</li>
+                        <li class="flex items-start"><i data-lucide="check" class="text-blue-500 w-5 h-5 mr-2"></i> Sélection automatique des features</li>
+                    </ul>
+                </div>
+                <div class="glass-panel p-8 rounded-3xl border-t-8 border-purple-500 bg-white hover:shadow-lg transition-shadow">
+                    <h3 class="text-2xl font-black text-gray-800 mb-4 flex items-center">
+                        <span class="bg-purple-100 text-purple-600 px-3 py-1 rounded-lg text-sm mr-4 uppercase tracking-widest font-bold">Ridge</span> 
+                        L2
+                    </h3>
+                    <ul class="space-y-3 text-gray-600 font-medium">
+                        <li class="flex items-start"><i data-lucide="check" class="text-purple-500 w-5 h-5 mr-2"></i> Réduit les poids proportionnellement</li>
+                        <li class="flex items-start"><i data-lucide="check" class="text-purple-500 w-5 h-5 mr-2"></i> Garde toutes les variables actives</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl p-8 shadow-inner border border-gray-200">
+                <div class="flex justify-between items-center mb-8">
+                    <h3 class="font-bold text-gray-700 text-xl flex items-center">
+                        <i data-lucide="activity" class="mr-2"></i> Impact sur les performances
+                    </h3>
+                    <div class="inline-flex bg-gray-200/80 p-1.5 rounded-xl backdrop-blur">
+                        <button onclick="setRegularization(false)" id="btn-no-reg" class="px-6 py-2.5 rounded-lg bg-white shadow-md font-bold text-gray-800 transition-all flex items-center">
+                            Sans Régularisation
+                        </button>
+                        <button onclick="setRegularization(true)" id="btn-with-reg" class="px-6 py-2.5 rounded-lg text-gray-500 font-medium hover:text-gray-700 transition-all bg-transparent shadow-none flex items-center">
+                            <i data-lucide="shield-check" class="w-4 h-4 mr-2"></i> Avec Régularisation
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex justify-around items-center text-center transition-all duration-500 bg-white p-6 rounded-2xl shadow-sm border border-gray-100" id="reg-results">
+                    <div class="w-1/3">
+                        <div class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Score Train</div>
+                        <div class="text-5xl font-black text-gray-800 transition-all duration-500" id="reg-train">100%</div>
+                    </div>
+                    
+                    <div class="w-1/3 flex justify-center">
+                        <div class="w-16 h-16 rounded-full border-4 border-gray-50 bg-gray-50 flex items-center justify-center text-gray-400 font-black italic">vs</div>
+                    </div>
+
+                    <div class="w-1/3">
+                        <div class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Score Test</div>
+                        <div class="text-5xl font-black text-red-500 transition-all duration-500 pulse-soft" id="reg-test">78%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 8 : Cross Validation & Early Stopping (Interactif) -->
+    <div class="slide" id="slide-8">
+        <div class="max-w-7xl w-full">
+            <h2 class="text-4xl font-bold text-gray-800 mb-10 text-center">Techniques Avancées</h2>
+            
+            <div class="grid grid-cols-2 gap-10">
+                <!-- CV -->
+                <div class="glass-panel p-8 rounded-3xl bg-white hover:shadow-xl transition-shadow flex flex-col border border-gray-100">
+                    <h3 class="text-2xl font-bold text-gray-800 mb-2 flex items-center">
+                        <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center mr-4">
+                            <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                        </div> 
+                        Cross Validation
+                    </h3>
+                    <p class="mb-6 text-gray-500 font-medium text-sm">Découper les données en plusieurs parties (K-Fold) pour une évaluation robuste.</p>
+                    
+                    <div class="bg-gray-50 p-6 rounded-2xl mb-6 flex-1 relative border border-gray-100 shadow-inner">
+                        <div class="flex justify-between items-center mb-4">
+                            <h4 class="font-bold text-gray-400 text-xs tracking-wider uppercase">Animation K-Fold (K=5)</h4>
+                            <button onclick="animateCV()" id="btn-cv" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-all shadow-md flex items-center">
+                                <i data-lucide="play" class="w-4 h-4 mr-2"></i> Lancer K-Fold
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-2" id="cv-folds">
+                            <!-- Généré par JS -->
+                        </div>
+                        
+                        <div class="mt-6 p-4 bg-white rounded-xl border border-gray-200 text-center font-black text-gray-400 shadow-sm transition-all text-lg" id="cv-result">
+                            En attente...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Early Stopping -->
+                <div class="glass-panel p-8 rounded-3xl bg-white hover:shadow-xl transition-shadow flex flex-col border border-gray-100">
+                    <h3 class="text-2xl font-bold text-gray-800 mb-2 flex items-center">
+                        <div class="w-10 h-10 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center mr-4">
+                            <i data-lucide="octagon-alert" class="w-5 h-5"></i>
+                        </div> 
+                        Early Stopping
+                    </h3>
+                    <p class="mb-6 text-gray-500 font-medium text-sm">Arrêter l'entraînement au point optimal avant le surapprentissage.</p>
+                    
+                    <div class="bg-gray-50 rounded-2xl p-4 flex-1 flex flex-col border border-gray-100 shadow-inner relative">
+                        <div class="flex justify-between items-center mb-4 px-2">
+                            <h4 class="font-bold text-gray-400 text-xs tracking-wider uppercase">Simulation Live</h4>
+                            <button onclick="animateEarlyStopping()" id="btn-es" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold hover:bg-purple-700 transition-all shadow-md flex items-center">
+                                <i data-lucide="play" class="w-4 h-4 mr-2"></i> Démarrer
+                            </button>
+                        </div>
+                        
+                        <div class="flex-1 w-full relative mb-4">
+                            <canvas id="chart-early-stopping"></canvas>
+                        </div>
+                        
+                        <div id="es-status" class="p-3 bg-white text-gray-500 border border-gray-200 rounded-xl text-sm font-bold text-center flex justify-center items-center transition-all shadow-sm">
+                            <i data-lucide="info" class="w-4 h-4 mr-2"></i> Cliquez sur Démarrer pour simuler l'entraînement.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 9 : Exemple concret (Interactif) -->
+    <div class="slide" id="slide-9">
+        <div class="max-w-5xl w-full">
+            <h2 class="text-4xl font-bold text-gray-800 mb-6 text-center">Exemple concret</h2>
+            <div class="flex justify-center mb-10">
+                <div class="inline-flex items-center bg-blue-50 text-blue-600 px-5 py-2.5 rounded-full font-bold shadow-sm">
+                    <i data-lucide="home" class="mr-2 w-5 h-5"></i> Projet : Prédiction du prix des maisons
+                </div>
+            </div>
+            
+            <div class="glass-panel p-10 rounded-3xl border-2 border-gray-200 bg-white shadow-xl max-w-3xl mx-auto relative overflow-hidden transition-all duration-700" id="concrete-card">
+                
+                <div class="flex justify-between items-start mb-10">
+                    <div>
+                        <h3 class="text-3xl font-black text-gray-800 mb-3" id="concrete-title">Premier Modèle</h3>
+                        <p class="text-red-500 font-bold text-sm uppercase tracking-wide flex items-center" id="concrete-subtitle">
+                            <i data-lucide="alert-circle" class="w-4 h-4 mr-2"></i> Decision Tree très profond
+                        </p>
+                    </div>
+                    
+                    <button onclick="toggleCorrection()" class="px-6 py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center" id="concrete-btn">
+                        <i data-lucide="wand-2" class="mr-2 w-5 h-5"></i> Appliquer Corrections
+                    </button>
+                </div>
+                
+                <div class="space-y-6 mb-8 relative z-10">
+                    <div class="flex justify-between items-center bg-gray-50 p-6 rounded-2xl border border-gray-200 shadow-sm transition-colors" id="concrete-train-box">
+                        <span class="font-bold text-gray-500 uppercase text-sm flex items-center tracking-wider">
+                            <i data-lucide="book-open" class="mr-3 w-5 h-5 text-gray-400"></i> Score Train
+                        </span>
+                        <span class="text-green-500 font-black text-4xl transition-all" id="concrete-train">1.00</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-red-50 p-6 rounded-2xl border border-red-200 shadow-sm transition-colors" id="concrete-test-box">
+                        <span class="font-bold text-gray-500 uppercase text-sm flex items-center tracking-wider">
+                            <i data-lucide="target" class="mr-3 w-5 h-5 text-gray-400"></i> Score Test
+                        </span>
+                        <span class="text-red-600 font-black text-4xl transition-all" id="concrete-test">0.73</span>
+                    </div>
+                </div>
+                
+                <div class="p-5 text-center text-red-800 font-bold bg-red-100 rounded-xl transition-all border border-red-200 flex items-center justify-center text-lg" id="concrete-status">
+                    <i data-lucide="siren" class="w-6 h-6 mr-3"></i> Overfitting détecté
+                </div>
+                
+                <div class="absolute bottom-6 right-8 opacity-0 transition-opacity duration-500" id="concrete-tags">
+                    <div class="flex space-x-3">
+                        <span class="px-4 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-bold shadow-sm uppercase tracking-wider">max_depth limité</span>
+                        <span class="px-4 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold shadow-sm uppercase tracking-wider">Cross Validation</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 10 : Conclusion -->
+    <div class="slide" id="slide-10">
+        <div class="max-w-4xl w-full">
+            <h2 class="text-5xl font-extrabold text-gray-800 mb-10 text-center">Conclusion</h2>
+            
+            <div class="glass-panel p-12 rounded-[2.5rem] bg-white shadow-2xl border border-gray-100 relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
+                <h3 class="text-xl font-bold mb-8 text-gray-400 uppercase tracking-widest text-center">À retenir</h3>
+                
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="flex items-start p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                        <div class="text-blue-500 mr-4 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <i data-lucide="brain" class="w-6 h-6"></i>
+                        </div> 
+                        <div>
+                            <span class="block font-bold text-gray-800 mb-1">Overfitting</span>
+                            <span class="text-sm text-gray-500 font-medium">Le modèle mémorise les données.</span>
+                        </div>
+                    </div>
+                    <div class="flex items-start p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                        <div class="text-orange-500 mr-4 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <i data-lucide="minus-circle" class="w-6 h-6"></i>
+                        </div> 
+                        <div>
+                            <span class="block font-bold text-gray-800 mb-1">Underfitting</span>
+                            <span class="text-sm text-gray-500 font-medium">Le modèle est trop simple.</span>
+                        </div>
+                    </div>
+                    <div class="flex items-start p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                        <div class="text-indigo-500 mr-4 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <i data-lucide="scale" class="w-6 h-6"></i>
+                        </div> 
+                        <div>
+                            <span class="block font-bold text-gray-800 mb-1">Biais / Variance</span>
+                            <span class="text-sm text-gray-500 font-medium">Un compromis essentiel.</span>
+                        </div>
+                    </div>
+                    <div class="flex items-start p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                        <div class="text-green-500 mr-4 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <i data-lucide="shield-check" class="w-6 h-6"></i>
+                        </div> 
+                        <div>
+                            <span class="block font-bold text-gray-800 mb-1">Régularisation</span>
+                            <span class="text-sm text-gray-500 font-medium">Améliore la généralisation.</span>
+                        </div>
+                    </div>
+                    <div class="flex items-start p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                        <div class="text-blue-500 mr-4 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <i data-lucide="refresh-cw" class="w-6 h-6"></i>
+                        </div> 
+                        <div>
+                            <span class="block font-bold text-gray-800 mb-1">Validation (CV)</span>
+                            <span class="text-sm text-gray-500 font-medium">Pour mieux évaluer le modèle.</span>
+                        </div>
+                    </div>
+                    <div class="flex items-start p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-md transition-all">
+                        <div class="text-red-500 mr-4 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                            <i data-lucide="octagon-alert" class="w-6 h-6"></i>
+                        </div> 
+                        <div>
+                            <span class="block font-bold text-gray-800 mb-1">Early Stopping</span>
+                            <span class="text-sm text-gray-500 font-medium">Évite l'apprentissage excessif.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-10 p-6 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white rounded-2xl text-center shadow-xl">
+                    <p class="font-black text-2xl mb-1 flex justify-center items-center uppercase tracking-wide">
+                        <i data-lucide="target" class="w-8 h-8 mr-3 text-yellow-400"></i> Objectif Ultime
+                    </p>
+                    <p class="font-medium opacity-90 text-lg">Obtenir de bonnes performances sur de <strong class="text-yellow-200">nouvelles données</strong>.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 11 : Démonstration Interactive finale -->
+    <div class="slide" id="slide-11">
+        <div class="max-w-[90rem] w-full px-8">
+            <div class="flex justify-between items-end mb-8">
+                <div>
+                    <div class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-700 rounded-md text-xs font-bold uppercase tracking-wider mb-2 w-max shadow-sm">
+                        <i data-lucide="flask-conical" class="w-3 h-3 mr-1"></i> Lab
+                    </div>
+                    <h2 class="text-4xl font-bold text-gray-800">Démonstration Complète (Multicritères)</h2>
+                </div>
+                <p class="text-gray-500 font-medium bg-white px-4 py-2 rounded-full border border-gray-200 shadow-sm">Dataset : House Prices (Decision Tree)</p>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-8 h-[550px]">
+                <div class="col-span-1 glass-panel p-6 rounded-3xl flex flex-col bg-white border border-gray-100 shadow-xl overflow-hidden">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center border-b border-gray-100 pb-3">
+                        <i data-lucide="sliders-horizontal" class="w-5 h-5 mr-3 text-indigo-500"></i> Tableau de bord
+                    </h3>
+                    
+                    <div class="mb-5">
+                        <div class="flex justify-between items-center mb-3">
+                            <label for="depth-slider" class="font-bold text-gray-600 uppercase text-xs tracking-wider">
+                                max_depth (Complexité)
+                            </label>
+                            <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-black text-sm shadow-inner" id="depth-val">1</span>
+                        </div>
+                        <input type="range" id="depth-slider" min="1" max="20" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    </div>
+
+                    <div class="space-y-3 mb-6">
+                        <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
+                            <div class="flex items-center">
+                                <i data-lucide="shield-check" class="w-4 h-4 mr-3 text-indigo-500"></i>
+                                <span class="font-bold text-gray-700 text-xs uppercase tracking-wide">Régularisation (L2)</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="demo-reg-toggle" class="sr-only peer">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                            </label>
+                        </div>
+                        
+                        <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
+                            <div class="flex items-center">
+                                <i data-lucide="database" class="w-4 h-4 mr-3 text-green-500"></i>
+                                <span class="font-bold text-gray-700 text-xs uppercase tracking-wide">Plus de Données (x10)</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="demo-data-toggle" class="sr-only peer">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"></div>
+                            </label>
+                        </div>
+
+                        <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
+                            <div class="flex items-center">
+                                <i data-lucide="refresh-cw" class="w-4 h-4 mr-3 text-blue-500"></i>
+                                <span class="font-bold text-gray-700 text-xs uppercase tracking-wide">Cross Validation (K=5)</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="demo-cv-toggle" class="sr-only peer">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-3 mb-auto">
+                        <div class="p-3 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center shadow-sm">
+                            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center"><i data-lucide="line-chart" class="w-3 h-3 mr-2"></i> Train R²</div>
+                            <div class="text-2xl font-black text-green-500 transition-all" id="demo-train">0.30</div>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center shadow-sm" id="demo-test-box">
+                            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center"><i data-lucide="activity" class="w-3 h-3 mr-2"></i> Test R²</div>
+                            <div class="text-2xl font-black transition-all text-blue-500" id="demo-test">0.25</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 text-xs font-bold text-center py-3 rounded-xl transition-all flex justify-center items-center shadow-sm" id="demo-status">
+                        ...
+                    </div>
+                </div>
+                
+                <div class="col-span-2 glass-panel p-6 rounded-3xl bg-white border border-gray-100 shadow-xl relative flex flex-col">
+                    <h3 class="font-bold text-gray-400 uppercase tracking-wider text-xs mb-4 text-center">Évolution des scores en fonction des techniques</h3>
+                    <div class="flex-1 w-full relative">
+                        <canvas id="chart-demo"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Overlay -->
+    <div class="absolute bottom-6 left-0 w-full flex justify-between items-center px-16 z-50 pointer-events-none">
+        <button onclick="prevSlide()" class="pointer-events-auto p-4 bg-white/90 backdrop-blur rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 hover:bg-gray-50 hover:scale-105 transition-all disabled:opacity-30 disabled:hover:scale-100 disabled:cursor-not-allowed group text-gray-800" id="btn-prev">
+            <i data-lucide="chevron-left" class="w-6 h-6 group-hover:-translate-x-1 transition-transform"></i>
+        </button>
+        
+        <div class="pointer-events-auto flex space-x-3 items-center bg-white/80 backdrop-blur px-6 py-3 rounded-full shadow-sm border border-gray-100" id="slide-indicators">
+            <!-- JS -->
+        </div>
+        
+        <button onclick="nextSlide()" class="pointer-events-auto p-4 bg-white/90 backdrop-blur rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 hover:bg-gray-50 hover:scale-105 transition-all disabled:opacity-30 disabled:hover:scale-100 disabled:cursor-not-allowed group text-gray-800" id="btn-next">
+            <i data-lucide="chevron-right" class="w-6 h-6 group-hover:translate-x-1 transition-transform"></i>
+        </button>
+    </div>
+
+    <!-- Script Principal -->
+    <script>
+        const totalSlides = 11;
+        let currentSlide = 1;
+
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.color = '#94a3b8'; // text-slate-400
+        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.9)';
+        Chart.defaults.plugins.tooltip.padding = 12;
+        Chart.defaults.plugins.tooltip.cornerRadius = 8;
+        Chart.defaults.plugins.tooltip.titleFont = { size: 13, weight: 'bold' };
+        Chart.defaults.plugins.tooltip.bodyFont = { size: 13 };
+
+        const indicatorsContainer = document.getElementById('slide-indicators');
+        for(let i=1; i<=totalSlides; i++) {
+            const dot = document.createElement('button');
+            dot.className = `w-2 h-2 rounded-full transition-all duration-300 focus:outline-none ${i === 1 ? 'bg-blue-600 w-6' : 'bg-gray-300 hover:bg-gray-400'}`;
+            dot.id = `dot-${i}`;
+            dot.onclick = () => goToSlide(i);
+            indicatorsContainer.appendChild(dot);
+        }
+
+        function updateSlides() {
+            for(let i=1; i<=totalSlides; i++) {
+                const slide = document.getElementById(`slide-${i}`);
+                const dot = document.getElementById(`dot-${i}`);
+                
+                if(i === currentSlide) {
+                    slide.classList.add('active');
+                    dot.classList.replace('bg-gray-300', 'bg-blue-600');
+                    dot.classList.replace('hover:bg-gray-400', 'bg-blue-600');
+                    dot.classList.add('w-6');
+                } else {
+                    slide.classList.remove('active');
+                    dot.classList.replace('bg-blue-600', 'bg-gray-300');
+                    dot.classList.remove('w-6');
+                    if(!dot.classList.contains('hover:bg-gray-400')) dot.classList.add('hover:bg-gray-400');
+                }
+            }
+            
+            document.getElementById('btn-prev').disabled = currentSlide === 1;
+            document.getElementById('btn-next').disabled = currentSlide === totalSlides;
+            document.getElementById('progress-bar').style.width = `${((currentSlide - 1) / (totalSlides - 1)) * 100}%`;
+            
+            // Lazy loads
+            if(currentSlide === 3 && !window.complexityLoaded) initComplexityDemo();
+            if(currentSlide === 5 && !window.biasVarianceLoaded) initBiasVariance();
+            if(currentSlide === 8 && !window.cvLoaded) {
+                window.cvLoaded = true;
+                renderCVFolds(-1);
+                initEarlyStopping();
+            }
+            if(currentSlide === 11 && !window.demoLoaded) initDemo();
+        }
+
+        function nextSlide() { if(currentSlide < totalSlides) { currentSlide++; updateSlides(); } }
+        function prevSlide() { if(currentSlide > 1) { currentSlide--; updateSlides(); } }
+        function goToSlide(n) { currentSlide = n; updateSlides(); }
+
+        document.addEventListener('keydown', (e) => {
+            if(e.key === 'ArrowRight' || e.key === 'Space') { e.preventDefault(); nextSlide(); }
+            if(e.key === 'ArrowLeft') { e.preventDefault(); prevSlide(); }
+        });
+
+        // --------------------------------------------------------
+        // Logique Slide 3 : Underfitting vs Overfitting Interactive
+        // --------------------------------------------------------
+        function initComplexityDemo() {
+            window.complexityLoaded = true;
+            const ctx = document.getElementById('chart-complexity');
+            const xVals = [1, 2, 3, 4, 5, 6, 7];
+            const yVals = [2, 3.5, 3, 5.5, 5, 7.5, 7];
+
+            const dataUnder = [2, 3, 4, 5, 6, 7, 8];
+            const dataOptimal = [2, 3.2, 3.8, 5.2, 6.1, 7.2, 7.8];
+            const dataOver = yVals;
+
+            window.complexityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: xVals,
+                    datasets: [
+                        { label: 'Données', data: yVals, borderColor: 'transparent', backgroundColor: '#94a3b8', type: 'scatter', pointRadius: 6, pointHoverRadius: 8 },
+                        { label: 'Modèle', data: dataOptimal, borderColor: '#22c55e', borderWidth: 4, tension: 0.4, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { display: false }, y: { display: false, min: 0, max: 10 } },
+                    animation: { duration: 600, easing: 'easeOutQuart' }
+                }
+            });
+
+            document.getElementById('complexity-slider').addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                const statusEl = document.getElementById('complexity-status');
+                const trainEl = document.getElementById('complex-train');
+                const testEl = document.getElementById('complex-test');
+                
+                if (val === 1) {
+                    statusEl.innerHTML = '<i data-lucide="minus-circle" class="w-5 h-5 mr-2"></i> Underfitting (Trop simple)';
+                    statusEl.className = 'p-4 text-orange-700 bg-orange-50 font-bold rounded-xl flex items-center justify-center border border-orange-200 mb-6 transition-colors shadow-inner';
+                    trainEl.innerText = 'Faible'; trainEl.className = 'text-orange-500 font-black text-xl transition-all';
+                    testEl.innerText = 'Faible'; testEl.className = 'text-orange-500 font-black text-xl transition-all';
+                    window.complexityChart.data.datasets[1].data = dataUnder;
+                    window.complexityChart.data.datasets[1].borderColor = '#f97316';
+                    window.complexityChart.data.datasets[1].tension = 0;
+                } else if (val === 2) {
+                    statusEl.innerHTML = '<i data-lucide="check-circle-2" class="w-5 h-5 mr-2"></i> Bon Modèle (Équilibre)';
+                    statusEl.className = 'p-4 text-green-700 bg-green-50 font-bold rounded-xl flex items-center justify-center border border-green-200 mb-6 transition-colors shadow-inner';
+                    trainEl.innerText = 'Bon'; trainEl.className = 'text-green-500 font-black text-xl transition-all';
+                    testEl.innerText = 'Bon'; testEl.className = 'text-green-500 font-black text-xl transition-all';
+                    window.complexityChart.data.datasets[1].data = dataOptimal;
+                    window.complexityChart.data.datasets[1].borderColor = '#22c55e';
+                    window.complexityChart.data.datasets[1].tension = 0.4;
+                } else {
+                    statusEl.innerHTML = '<i data-lucide="alert-triangle" class="w-5 h-5 mr-2"></i> Overfitting (Mémorisation)';
+                    statusEl.className = 'p-4 text-red-700 bg-red-50 font-bold rounded-xl flex items-center justify-center border border-red-200 mb-6 transition-colors shadow-inner';
+                    trainEl.innerText = 'Excellent'; trainEl.className = 'text-green-500 font-black text-xl transition-all';
+                    testEl.innerText = 'Faible'; testEl.className = 'text-red-500 font-black text-xl transition-all scale-110 transform';
+                    window.complexityChart.data.datasets[1].data = dataOver;
+                    window.complexityChart.data.datasets[1].borderColor = '#ef4444';
+                    window.complexityChart.data.datasets[1].tension = 0.2;
+                }
+                lucide.createIcons();
+                window.complexityChart.update();
+            });
+        }
+
+        // --------------------------------------------------------
+        // Logique Slide 4 : Simulation Détection Overfitting
+        // --------------------------------------------------------
+        let simInterval;
+        function runSimulation() {
+            const btn = document.getElementById('btn-simulate');
+            if (simInterval) return;
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="mr-2 w-5 h-5 animate-spin"></i> Entraînement en cours...';
+            lucide.createIcons();
+
+            let epoch = 0;
+            const maxEpochs = 50;
+            
+            document.getElementById('detect-test').className = "flex-1 text-right text-3xl text-blue-500 font-black transition-all";
+            
+            simInterval = setInterval(() => {
+                epoch++;
+                document.getElementById('epoch-counter').innerText = `${epoch} / ${maxEpochs}`;
+                document.getElementById('epoch-progress').style.width = `${(epoch/maxEpochs)*100}%`;
+                
+                const trainScore = 50 + (1 - Math.exp(-epoch/10)) * 49; 
+                let testScore = 50 + (1 - Math.exp(-epoch/10)) * 35;
+                if (epoch > 20) testScore -= (epoch - 20) * 0.5;
+                
+                document.getElementById('detect-train').innerText = `${trainScore.toFixed(1)} %`;
+                document.getElementById('detect-test').innerText = `${testScore.toFixed(1)} %`;
+                
+                const alertBox = document.getElementById('detect-alert');
+                const alertContainer = document.getElementById('alert-icon-container');
+                const alertText = document.getElementById('alert-text');
+                
+                if (epoch === 1) {
+                    alertBox.className = 'bg-blue-50 border border-blue-200 rounded-2xl p-6 mb-8 text-center flex-1 flex flex-col justify-center transition-all duration-500 shadow-inner';
+                    alertContainer.innerHTML = '<i data-lucide="trending-up" class="w-12 h-12 mx-auto text-blue-500 mb-4"></i>';
+                    alertText.innerText = "Le modèle commence à apprendre et à identifier des patterns.";
+                    alertText.className = "text-blue-800 font-bold text-lg";
+                } else if (epoch === 20) {
+                    alertBox.className = 'bg-green-50 border border-green-200 rounded-2xl p-6 mb-8 text-center flex-1 flex flex-col justify-center transition-all duration-500 shadow-inner';
+                    alertContainer.innerHTML = '<i data-lucide="check-circle" class="w-12 h-12 mx-auto text-green-500 mb-4"></i>';
+                    alertText.innerText = "Performances optimales ! Le modèle généralise bien.";
+                    alertText.className = "text-green-800 font-bold text-lg";
+                } else if (epoch === 35) {
+                    alertBox.className = 'bg-red-50 border border-red-200 rounded-2xl p-6 mb-8 text-center flex-1 flex flex-col justify-center transition-all duration-500 scale-105 transform shadow-lg';
+                    alertContainer.innerHTML = '<i data-lucide="alert-triangle" class="w-14 h-14 mx-auto text-red-500 mb-4 pulse-soft"></i>';
+                    alertText.innerHTML = "OVERFITTING DÉTECTÉ !<br>L'écart entre Train et Test se creuse.";
+                    alertText.className = "text-red-800 font-black text-xl";
+                    document.getElementById('detect-test').className = "flex-1 text-right text-3xl text-red-500 font-black transition-all";
+                }
+                
+                lucide.createIcons();
+                
+                if (epoch >= maxEpochs) {
+                    clearInterval(simInterval);
+                    simInterval = null;
+                    btn.innerHTML = '<i data-lucide="rotate-ccw" class="mr-2 w-5 h-5"></i> Recommencer';
+                    btn.disabled = false;
+                    lucide.createIcons();
+                }
+            }, 80);
+        }
+
+        // --------------------------------------------------------
+        // Logique Slide 5 : Bias / Variance Interactive
+        // --------------------------------------------------------
+        function initBiasVariance() {
+            window.biasVarianceLoaded = true;
+            
+            const bvCursorPlugin = {
+                id: 'bvCursor',
+                afterDraw: chart => {
+                    const slider = document.getElementById('bv-slider');
+                    if(slider && chart.scales.x) {
+                        const val = parseInt(slider.value);
+                        const x = chart.scales.x.getPixelForValue(val);
+                        const topY = chart.scales.y.top;
+                        const bottomY = chart.scales.y.bottom;
+                        
+                        chart.ctx.save();
+                        chart.ctx.beginPath();
+                        chart.ctx.moveTo(x, topY);
+                        chart.ctx.lineTo(x, bottomY);
+                        chart.ctx.lineWidth = 2;
+                        chart.ctx.strokeStyle = '#4f46e5'; 
+                        chart.ctx.setLineDash([5, 5]);
+                        chart.ctx.stroke();
+                        chart.ctx.restore();
+                    }
+                }
+            };
+
+            window.bvChart = new Chart(document.getElementById('chart-bias-variance'), {
+                type: 'line',
+                data: {
+                    labels: ['Très Faible', 'Faible', 'Moyenne', 'Forte', 'Très Forte'],
+                    datasets: [
+                        { label: 'Erreur Totale', data: [8, 5, 3, 4.5, 8], borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', borderWidth: 4, tension: 0.4, pointRadius: 4 },
+                        { label: 'Biais (Underfitting)', data: [7, 4, 2, 1, 0.5], borderColor: '#f97316', borderDash: [5,5], borderWidth: 2, tension: 0.4, pointRadius: 2 },
+                        { label: 'Variance (Overfitting)', data: [1, 1, 1.5, 3.5, 7.5], borderColor: '#ef4444', borderDash: [5,5], borderWidth: 2, tension: 0.4, pointRadius: 2 }
+                    ]
+                },
+                plugins: [bvCursorPlugin],
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8, font: { weight: 'bold' } } } },
+                    scales: {
+                        x: { title: { display: true, text: 'Complexité du modèle ➔', font: { weight: 'bold' } }, grid: { display: false } },
+                        y: { display: false, min: 0, max: 9 }
+                    },
+                    animation: { duration: 500 }
+                }
+            });
+
+            document.getElementById('bv-slider').addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                const boxBias = document.getElementById('box-bias');
+                const boxVar = document.getElementById('box-variance');
+                const boxOpt = document.getElementById('box-optimal');
+                
+                boxBias.className = 'glass-panel p-5 rounded-2xl border-l-8 border-orange-400 transition-all duration-300 opacity-50 bg-white';
+                boxVar.className = 'glass-panel p-5 rounded-2xl border-l-8 border-red-500 transition-all duration-300 opacity-50 bg-white';
+                boxOpt.className = 'p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold text-center shadow-lg transition-all duration-300 opacity-50 flex items-center justify-center';
+                
+                if (val < 2) {
+                    boxBias.classList.replace('opacity-50', 'opacity-100');
+                    boxBias.classList.add('scale-105', 'shadow-xl');
+                } else if (val > 2) {
+                    boxVar.classList.replace('opacity-50', 'opacity-100');
+                    boxVar.classList.add('scale-105', 'shadow-xl');
+                } else {
+                    boxOpt.classList.replace('opacity-50', 'opacity-100');
+                    boxOpt.classList.add('scale-105', 'shadow-xl', 'ring-4', 'ring-indigo-300', 'ring-opacity-50');
+                }
+                
+                window.bvChart.update('none');
+            });
+            
+            document.getElementById('bv-slider').dispatchEvent(new Event('input'));
+        }
+
+        // --------------------------------------------------------
+        // Logique Slide 7 : Régularisation
+        // --------------------------------------------------------
+        function setRegularization(active) {
+            const btnNo = document.getElementById('btn-no-reg');
+            const btnWith = document.getElementById('btn-with-reg');
+            const trainScore = document.getElementById('reg-train');
+            const testScore = document.getElementById('reg-test');
+
+            if(active) {
+                btnWith.className = "px-6 py-2.5 rounded-lg bg-white shadow-md font-bold text-gray-800 transition-all flex items-center";
+                btnNo.className = "px-6 py-2.5 rounded-lg text-gray-500 font-medium hover:text-gray-700 transition-all bg-transparent shadow-none flex items-center";
+                
+                trainScore.innerText = '95%';
+                trainScore.className = "text-5xl font-black text-gray-700 transition-all duration-500";
+                
+                testScore.innerText = '91%';
+                testScore.className = "text-5xl font-black text-green-500 transition-all duration-500 pulse-soft transform scale-110";
+            } else {
+                btnNo.className = "px-6 py-2.5 rounded-lg bg-white shadow-md font-bold text-gray-800 transition-all flex items-center";
+                btnWith.className = "px-6 py-2.5 rounded-lg text-gray-500 font-medium hover:text-gray-700 transition-all bg-transparent shadow-none flex items-center";
+                
+                trainScore.innerText = '100%';
+                trainScore.className = "text-5xl font-black text-gray-800 transition-all duration-500";
+                
+                testScore.innerText = '78%';
+                testScore.className = "text-5xl font-black text-red-500 transition-all duration-500 pulse-soft transform scale-100";
+            }
+        }
+
+        // --------------------------------------------------------
+        // Logique Slide 8 : Animation K-Fold & Early Stopping Live
+        // --------------------------------------------------------
+        function renderCVFolds(activeIndex = -1) {
+            const container = document.getElementById('cv-folds');
+            if (!container) return;
+            container.innerHTML = '';
+            for(let i=0; i<5; i++) {
+                const row = document.createElement('div');
+                row.className = 'flex space-x-2 opacity-30 transition-opacity duration-300';
+                if (activeIndex === -1 || activeIndex === i) row.classList.remove('opacity-30');
+                
+                for(let j=0; j<5; j++) {
+                    const block = document.createElement('div');
+                    if (i === j) {
+                        block.className = 'h-10 flex-1 bg-green-400 rounded-lg shadow-sm text-white text-xs flex items-center justify-center font-bold transition-all';
+                        block.innerText = 'Val';
+                        if (activeIndex === i) block.classList.add('scale-110', 'bg-green-500', 'shadow-md', 'z-10');
+                    } else {
+                        block.className = 'h-10 flex-1 bg-blue-200 rounded-lg transition-all';
+                        if (activeIndex === i) block.classList.replace('bg-blue-200', 'bg-blue-400');
+                    }
+                    row.appendChild(block);
+                }
+                container.appendChild(row);
+            }
+        }
+
+        function animateCV() {
+            let currentFold = 0;
+            const btn = document.getElementById('btn-cv');
+            btn.disabled = true;
+            document.getElementById('cv-result').className = "mt-6 p-4 bg-white rounded-xl border border-gray-200 text-center font-bold text-gray-600 shadow-sm transition-all text-lg";
+            document.getElementById('cv-result').innerHTML = '<i data-lucide="loader-2" class="inline animate-spin mr-2 w-5 h-5 align-text-bottom"></i> Évaluation en cours...';
+            lucide.createIcons();
+            
+            const interval = setInterval(() => {
+                renderCVFolds(currentFold);
+                currentFold++;
+                if (currentFold >= 5) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        renderCVFolds(-1);
+                        const res = document.getElementById('cv-result');
+                        res.className = "mt-6 p-4 bg-green-50 rounded-xl border border-green-200 text-center font-black text-green-600 shadow-sm transition-all text-xl";
+                        res.innerHTML = '<i data-lucide="check-circle" class="inline mr-2 w-6 h-6 align-text-bottom"></i> Score moyen : 89.4%';
+                        lucide.createIcons();
+                        btn.disabled = false;
+                    }, 800);
+                }
+            }, 600);
+        }
+
+        let esChartInstance = null;
+        let esInterval = null;
+
+        function initEarlyStopping() {
+            window.earlyStoppingLoaded = true;
+            const ctx = document.getElementById('chart-early-stopping');
+            
+            if (esChartInstance) {
+                esChartInstance.destroy();
+            }
+            
+            esChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 40}, (_, i) => i + 1),
+                    datasets: [
+                        { label: 'Train Loss', data: [], borderColor: '#3b82f6', borderWidth: 3, tension: 0.4, pointRadius: 0 },
+                        { label: 'Validation Loss', data: [], borderColor: '#ec4899', borderWidth: 3, tension: 0.4, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'top', labels: { usePointStyle: true, font: { weight: 'bold' } } } },
+                    scales: {
+                        x: { title: { display: true, text: 'Époques', font: { weight: 'bold' } }, grid: { display: false } },
+                        y: { min: 0, max: 2.2, display: false }
+                    },
+                    animation: false 
+                }
+            });
+        }
+
+        function animateEarlyStopping() {
+            const btn = document.getElementById('btn-es');
+            if (esInterval) return;
+            
+            esChartInstance.data.datasets[0].data = [];
+            esChartInstance.data.datasets[1].data = [];
+            esChartInstance.update();
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i> Entraînement...';
+            lucide.createIcons();
+            
+            const statusBox = document.getElementById('es-status');
+            statusBox.className = 'p-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-sm font-bold text-center flex justify-center items-center transition-all';
+            statusBox.innerHTML = '<i data-lucide="trending-down" class="w-4 h-4 mr-2"></i> La Loss diminue...';
+            lucide.createIcons();
+            
+            let epoch = 1;
+            
+            esInterval = setInterval(() => {
+                const trainVal = 2 * Math.exp(-epoch/8) + 0.1;
+                const valVal = epoch > 20 ? (2 * Math.exp(-epoch/8) + 0.3) + (epoch - 20) * 0.05 : (2 * Math.exp(-epoch/8) + 0.3);
+                
+                esChartInstance.data.datasets[0].data.push(trainVal);
+                esChartInstance.data.datasets[1].data.push(valVal);
+                esChartInstance.update('none');
+                
+                if (epoch === 20) {
+                    statusBox.className = 'p-3 bg-green-50 text-green-700 border border-green-200 rounded-xl text-sm font-bold text-center flex justify-center items-center transition-all scale-105 shadow-md';
+                    statusBox.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4 mr-2"></i> Point Optimal Atteint';
+                    lucide.createIcons();
+                } else if (epoch > 28) {
+                    clearInterval(esInterval);
+                    esInterval = null;
+                    
+                    statusBox.className = 'p-3 bg-red-50 text-red-700 border border-red-200 rounded-xl text-sm font-bold text-center flex justify-center items-center transition-all';
+                    statusBox.innerHTML = '<i data-lucide="octagon-alert" class="w-4 h-4 mr-2"></i> Stop ! La Validation remonte (Overfitting).';
+                    lucide.createIcons();
+                    
+                    btn.disabled = false;
+                    btn.innerHTML = '<i data-lucide="rotate-ccw" class="w-4 h-4 mr-2"></i> Rejouer';
+                    lucide.createIcons();
+                }
+                epoch++;
+            }, 100);
+        }
+
+        // --------------------------------------------------------
+        // Logique Slide 9 : Exemple concret avec toggle "Correction"
+        // --------------------------------------------------------
+        let isCorrected = false;
+        function toggleCorrection() {
+            isCorrected = !isCorrected;
+            
+            const card = document.getElementById('concrete-card');
+            const title = document.getElementById('concrete-title');
+            const subtitle = document.getElementById('concrete-subtitle');
+            const btn = document.getElementById('concrete-btn');
+            const train = document.getElementById('concrete-train');
+            const test = document.getElementById('concrete-test');
+            const trainBox = document.getElementById('concrete-train-box');
+            const testBox = document.getElementById('concrete-test-box');
+            const status = document.getElementById('concrete-status');
+            const tags = document.getElementById('concrete-tags');
+
+            if (isCorrected) {
+                card.classList.add('ring-4', 'ring-green-400', 'ring-opacity-50');
+                title.innerText = "Modèle Corrigé";
+                subtitle.className = "text-green-500 font-bold text-sm uppercase tracking-wide flex items-center";
+                subtitle.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4 mr-2"></i> Optimisé et Régularisé';
+                
+                btn.innerHTML = '<i data-lucide="rotate-ccw" class="mr-2 w-5 h-5"></i> Revenir au début';
+                btn.classList.replace('bg-indigo-600', 'bg-gray-600');
+                btn.classList.replace('hover:bg-indigo-700', 'hover:bg-gray-700');
+                
+                train.innerText = "0.92";
+                train.className = "text-green-600 font-black text-4xl transition-all";
+                trainBox.classList.replace('bg-gray-50', 'bg-green-50');
+                trainBox.classList.replace('border-gray-200', 'border-green-100');
+                
+                test.innerText = "0.90";
+                test.className = "text-green-600 font-black text-4xl transition-all";
+                testBox.className = "flex justify-between items-center bg-green-50 p-6 rounded-2xl border border-green-200 shadow-md transition-colors transform scale-105";
+                
+                status.className = "p-5 text-center text-green-800 font-bold bg-green-100 rounded-xl transition-all border border-green-200 flex items-center justify-center text-lg";
+                status.innerHTML = '<i data-lucide="sparkles" class="w-6 h-6 mr-3"></i> Le modèle généralise beaucoup mieux !';
+                
+                tags.classList.remove('opacity-0');
+            } else {
+                card.classList.remove('ring-4', 'ring-green-400', 'ring-opacity-50');
+                title.innerText = "Premier Modèle";
+                subtitle.className = "text-red-500 font-bold text-sm uppercase tracking-wide flex items-center";
+                subtitle.innerHTML = '<i data-lucide="alert-circle" class="w-4 h-4 mr-2"></i> Decision Tree très profond';
+                
+                btn.innerHTML = '<i data-lucide="wand-2" class="mr-2 w-5 h-5"></i> Appliquer Corrections';
+                btn.classList.replace('bg-gray-600', 'bg-indigo-600');
+                btn.classList.replace('hover:bg-gray-700', 'hover:bg-indigo-700');
+                
+                train.innerText = "1.00";
+                train.className = "text-green-500 font-black text-4xl transition-all";
+                trainBox.classList.replace('bg-green-50', 'bg-gray-50');
+                trainBox.classList.replace('border-green-100', 'border-gray-200');
+                
+                test.innerText = "0.73";
+                test.className = "text-red-600 font-black text-4xl transition-all";
+                testBox.className = "flex justify-between items-center bg-red-50 p-6 rounded-2xl border border-red-200 shadow-sm transition-colors";
+                
+                status.className = "p-5 text-center text-red-800 font-bold bg-red-100 rounded-xl transition-all border border-red-200 flex items-center justify-center text-lg";
+                status.innerHTML = '<i data-lucide="siren" class="w-6 h-6 mr-3"></i> Overfitting détecté';
+                
+                tags.classList.add('opacity-0');
+            }
+            lucide.createIcons();
+        }
+
+        // --------------------------------------------------------
+        // Logique Slide 11 : Demo Interactive Finale (Multicritères)
+        // --------------------------------------------------------
+        function initDemo() {
+            window.demoLoaded = true;
+            const ctx = document.getElementById('chart-demo');
+            const depths = Array.from({length: 20}, (_, i) => i + 1);
+            
+            const cursorPlugin = {
+                id: 'sliderCursor',
+                afterDraw: chart => {
+                    const slider = document.getElementById('depth-slider');
+                    if(slider && chart.scales.x) {
+                        const val = parseInt(slider.value) - 1;
+                        const x = chart.scales.x.getPixelForValue(val);
+                        const topY = chart.scales.y.top;
+                        const bottomY = chart.scales.y.bottom;
+                        
+                        chart.ctx.save();
+                        chart.ctx.beginPath();
+                        chart.ctx.moveTo(x, topY);
+                        chart.ctx.lineTo(x, bottomY);
+                        chart.ctx.lineWidth = 2;
+                        chart.ctx.strokeStyle = '#94a3b8';
+                        chart.ctx.setLineDash([5, 5]);
+                        chart.ctx.stroke();
+                        chart.ctx.restore();
+                    }
+                }
+            };
+
+            window.demoChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: depths,
+                    datasets: [
+                        { label: 'Train R²', data: [], borderColor: '#22c55e', backgroundColor: '#22c55e', borderWidth: 3, tension: 0.3, pointRadius: 4 },
+                        { label: 'Test R²', data: [], borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: 3, tension: 0.3, pointRadius: 4 }
+                    ]
+                },
+                plugins: [cursorPlugin],
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { min: 0, max: 1.05, title: { display: true, text: 'Score R²', font: { weight: 'bold' } } },
+                        x: { title: { display: true, text: 'Profondeur de l\'arbre (max_depth)', font: { weight: 'bold' } }, grid: { display: false } }
+                    },
+                    plugins: { legend: { position: 'top', labels: { usePointStyle: true, font: { weight: 'bold' } } } },
+                    animation: { duration: 500 }
+                }
+            });
+
+            const slider = document.getElementById('depth-slider');
+            const toggleReg = document.getElementById('demo-reg-toggle');
+            const toggleData = document.getElementById('demo-data-toggle');
+            const toggleCV = document.getElementById('demo-cv-toggle');
+            
+            function updateDemoChart() {
+                const val = parseInt(slider.value);
+                const idx = val - 1;
+                
+                const isReg = toggleReg.checked;
+                const isData = toggleData.checked;
+                const isCV = toggleCV.checked;
+                
+                // --- Calcul dynamique des scores selon les options choisies ---
+                const trainData = depths.map(d => {
+                    let base = 1 - (isData ? 0.8 : 0.7) * Math.exp(-d / (isData ? 4 : 3));
+                    if (isReg) base -= 0.02; // Régularisation contraint légèrement le train
+                    return Math.min(1.0, base);
+                });
+                
+                const testData = depths.map(d => {
+                    let base = 1 - (isData ? 0.8 : 0.75) * Math.exp(-d / (isData ? 4 : 3));
+                    
+                    const overfitThreshold = isData ? 12 : 6; // Plus de données retarde l'overfitting
+                    const penaltyFactor = isReg ? 0.005 : 0.03; // La régularisation atténue la chute
+                    
+                    let penalty = d > overfitThreshold ? (d - overfitThreshold) * penaltyFactor : 0;
+                    let finalTest = base - penalty;
+                    
+                    if (isCV) finalTest -= 0.02; // CV est légèrement plus pessimiste mais stable
+                    
+                    return finalTest;
+                });
+                
+                window.demoChart.data.datasets[0].data = trainData;
+                window.demoChart.data.datasets[1].data = testData;
+                
+                // Mises à jour UI
+                const testDataset = window.demoChart.data.datasets[1];
+                const testBox = document.getElementById('demo-test-box');
+
+                if (isReg) {
+                    testDataset.borderColor = '#8b5cf6'; // Violet
+                    testDataset.backgroundColor = '#8b5cf6';
+                } else if (isData) {
+                    testDataset.borderColor = '#0ea5e9'; // Cyan
+                    testDataset.backgroundColor = '#0ea5e9';
+                } else {
+                    testDataset.borderColor = '#3b82f6'; // Bleu
+                    testDataset.backgroundColor = '#3b82f6';
+                }
+                
+                testDataset.label = isCV ? 'Test R² (Validé K-Fold)' : 'Test R²';
+                document.getElementById('depth-val').innerText = val;
+                
+                const tTrain = trainData[idx];
+                const tTest = testData[idx];
+                
+                document.getElementById('demo-train').innerText = tTrain.toFixed(2);
+                document.getElementById('demo-test').innerText = tTest.toFixed(2);
+                document.getElementById('demo-test').style.color = testDataset.borderColor;
+                
+                const statusEl = document.getElementById('demo-status');
+                const diff = tTrain - tTest;
+                
+                const optimalMax = isData ? (isReg ? 18 : 12) : (isReg ? 13 : 7);
+
+                if (val < 4) {
+                    statusEl.innerHTML = '<i data-lucide="minus-circle" class="w-4 h-4 mr-2"></i> Underfitting (Trop simple)';
+                    statusEl.className = 'mt-4 text-xs font-bold text-center py-3 rounded-xl transition-all text-orange-700 bg-orange-100 border border-orange-200 flex justify-center items-center';
+                    document.getElementById('demo-test').className = 'text-2xl font-black transition-all';
+                } else if (val >= 4 && val <= optimalMax) {
+                    statusEl.innerHTML = '<i data-lucide="check-circle-2" class="w-4 h-4 mr-2"></i> Optimal (Généralise bien)';
+                    statusEl.className = 'mt-4 text-xs font-bold text-center py-3 rounded-xl transition-all text-green-700 bg-green-100 border border-green-200 flex justify-center items-center shadow-md';
+                    document.getElementById('demo-test').className = 'text-2xl font-black transition-all transform scale-110';
+                } else {
+                    statusEl.innerHTML = `<i data-lucide="alert-triangle" class="w-4 h-4 mr-2"></i> Overfitting (Écart de ${(diff*100).toFixed(0)}%)`;
+                    statusEl.className = 'mt-4 text-xs font-bold text-center py-3 rounded-xl transition-all text-red-700 bg-red-100 border border-red-200 flex justify-center items-center';
+                    document.getElementById('demo-test').className = 'text-2xl font-black transition-all text-red-500';
+                }
+
+                lucide.createIcons();
+                window.demoChart.update('none'); 
+            }
+
+            slider.addEventListener('input', updateDemoChart);
+            toggleReg.addEventListener('change', updateDemoChart);
+            toggleData.addEventListener('change', updateDemoChart);
+            toggleCV.addEventListener('change', updateDemoChart);
+            
+            updateDemoChart();
+        }
+
+        // Démarrage initial
+        lucide.createIcons();
+        updateSlides();
+    </script>
+</body>
+</html>
